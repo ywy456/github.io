@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>广东旅游智慧导览 · 跨设备数据同步版</title>
+    <!-- Leaflet 核心库及插件 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-polylinedecorator/1.6.0/leaflet.polylineDecorator.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+            background: #eef2f5;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100%;
+        }
+        header {
+            background: linear-gradient(135deg, #1e5a3a, #2c7a4d);
+            color: white;
+            padding: 8px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            z-index: 10;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }
+        .header-title { flex: 1; text-align: center; }
+        .header-title h1 { font-size: 1.3rem; letter-spacing: 1px; }
+        .header-title p { font-size: 0.7rem; opacity: 0.85; margin-top: 2px; }
+        .auth-buttons { display: flex; gap: 12px; }
+        .auth-buttons button {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            padding: 6px 14px;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: 0.2s;
+            backdrop-filter: blur(2px);
+        }
+        .auth-buttons button:hover { background: rgba(255,255,255,0.35); }
+        .main-content { flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 16px; overflow: hidden; }
+        .control-bar {
+            background: white;
+            border-radius: 28px;
+            padding: 12px 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .search-panel { display: flex; gap: 8px; flex: 2; min-width: 200px; }
+        .search-panel input { flex: 1; padding: 8px 16px; border: 1px solid #ddd; border-radius: 40px; font-size: 14px; background: #f9fafc; }
+        .search-panel button { background-color: #2c7a4d; color: white; border: none; border-radius: 40px; padding: 6px 18px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .search-panel button:hover { background-color: #1e5a3a; }
+        .type-toggle-panel { display: flex; gap: 20px; background: #f8f9fa; padding: 4px 16px; border-radius: 40px; align-items: center; }
+        .toggle-group { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+        .filter-panel { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; background: #f8f9fa; padding: 6px 16px; border-radius: 40px; }
+        .filter-group { background: white; padding: 4px 12px; border-radius: 32px; display: flex; align-items: center; gap: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .filter-group label { font-size: 12px; font-weight: 600; color: #2c7a4d; }
+        .filter-group select { padding: 4px 8px; border-radius: 20px; border: 1px solid #ddd; background: white; font-size: 12px; }
+        .filter-count { background: #e9ecef; padding: 4px 12px; border-radius: 30px; font-size: 12px; font-weight: 500; }
+        .map-container { flex: 1; display: flex; gap: 16px; min-height: 0; }
+        #mapContainer { flex: 3; border-radius: 24px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.1); background: #d9e3e8; z-index: 1; }
+        #infoPanel { flex: 1; max-width: 360px; background: white; border-radius: 24px; box-shadow: 0 8px 20px rgba(0,0,0,0.08); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+        .section-card { background: #fefefe; border-radius: 20px; border: 1px solid #eef2f5; padding: 12px; transition: all 0.2s; }
+        .section-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; border-left: 4px solid #2c7a4d; padding-left: 10px; color: #1e3a2f; }
+        .recommend-list, .favorites-list, .admin-list { max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .recommend-item, .fav-item, .admin-item { background: #f9fafc; border-radius: 14px; padding: 6px 10px; font-size: 0.75rem; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: 0.1s; border-left: 3px solid #e67e22; }
+        .fav-item { border-left-color: #e74c3c; }
+        .admin-item { border-left-color: #2980b9; cursor: default; flex-wrap: wrap; }
+        .poi-card { background: #f9faf8; border-radius: 20px; padding: 14px; border-left: 5px solid #2c7a4d; margin-bottom: 8px; }
+        .poi-card img { width: 100%; max-height: 150px; object-fit: cover; border-radius: 16px; margin: 8px 0; }
+        .star-rating { color: #f4b836; font-size: 12px; letter-spacing: 1px; }
+        .weather-info { background: #e6f0fa; border-radius: 16px; padding: 8px 12px; font-size: 12px; margin: 8px 0; }
+        .route-info { background: #f0f7ff; border-radius: 16px; padding: 10px; font-size: 11px; }
+        button { cursor: pointer; border-radius: 40px; border: none; padding: 6px 14px; font-size: 12px; font-weight: 500; transition: 0.2s; }
+        .btn-primary { background: #27ae60; color: white; }
+        .btn-warning { background: #e67e22; color: white; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-sm { padding: 4px 10px; font-size: 11px; }
+        .action-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+        .basemap-switcher { position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(0,0,0,0.7); padding: 6px 14px; border-radius: 40px; backdrop-filter: blur(8px); color: white; font-size: 12px; display: flex; gap: 8px; }
+        .basemap-switcher select { background: #2c3e50; color: white; border: none; border-radius: 30px; padding: 2px 8px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; }
+        .modal-content { background: white; border-radius: 32px; padding: 24px; width: 90%; max-width: 550px; max-height: 85vh; overflow-y: auto; }
+        .modal-content input, .modal-content select, .modal-content textarea { width: 100%; margin: 8px 0; padding: 10px; border-radius: 30px; border: 1px solid #ddd; }
+        .image-preview { width: 100%; max-height: 150px; object-fit: cover; border-radius: 20px; margin: 8px 0; display: none; }
+        .focus-control { display: flex; gap: 12px; margin: 8px 0; align-items: center; }
+        .rec-img { width: 36px; height: 36px; object-fit: cover; border-radius: 10px; margin-right: 8px; }
+        .rec-item-content { display: flex; align-items: center; flex: 1; }
+        @media (max-width: 700px) {
+            .map-container { flex-direction: column; }
+            #infoPanel { max-width: 100%; max-height: 45%; }
+            .basemap-switcher { bottom: 10px; left: 10px; }
+            .control-bar { flex-direction: column; align-items: stretch; }
+            .type-toggle-panel { justify-content: center; }
+            .filter-panel { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+<div id="container">
+    <header>
+        <div class="header-title">
+            <h1>⭐ 广东旅游智慧导览</h1>
+            <p>景点 · 美食 · 酒店 | 智能路线 | 跨设备数据同步</p>
+        </div>
+        <div class="auth-buttons" id="authArea">
+            <button id="loginBtn">🔐 管理员登录</button>
+            <button id="logoutBtn" style="display:none;">🚪 退出管理</button>
+        </div>
+    </header>
+    <div class="main-content">
+        <div class="control-bar">
+            <div class="search-panel">
+                <input type="text" id="keywordInput" placeholder="搜索景点、美食、酒店...">
+                <button id="searchBtn">🔍 搜索</button>
+                <button id="locateBtn">📍 定位</button>
+                <button id="resetBtn">🗺️ 重置</button>
+            </div>
+            <div class="type-toggle-panel">
+                <div class="toggle-group"><input type="checkbox" id="toggleScenic" checked> <label>🏞️ 景点</label></div>
+                <div class="toggle-group"><input type="checkbox" id="toggleFood" checked> <label>🍜 美食</label></div>
+                <div class="toggle-group"><input type="checkbox" id="toggleHotel" checked> <label>🏨 酒店</label></div>
+            </div>
+            <div class="filter-panel">
+                <div class="filter-group"><label>🏞️ 景点星级</label><select id="starFilterScenic"><option value="all">全部</option><option value="5">5星+</option><option value="4">4星+</option><option value="3">3星+</option><option value="2">2星+</option></select></div>
+                <div class="filter-group"><label>🍜 美食星级</label><select id="starFilterFood"><option value="all">全部</option><option value="5">5星+</option><option value="4">4星+</option><option value="3">3星+</option></select></div>
+                <div class="filter-group"><label>🏨 酒店星级</label><select id="starFilterHotel"><option value="all">全部</option><option value="5">5星+</option><option value="4">4星+</option></select></div>
+                <div class="filter-count" id="filterCount">共20个地点</div>
+            </div>
+        </div>
+        <div class="map-container">
+            <div id="mapContainer"></div>
+            <div id="infoPanel">
+                <h3 style="margin-bottom: 4px;">📌 景点详情</h3>
+                <div class="section-card">
+                    <div class="section-title">📍 我的自定义定位</div>
+                    <div id="customLocStatus" style="font-size:12px; color:#555;">未设置自定义位置，点击下方按钮激活地图点选</div>
+                    <div class="action-group" style="margin-top:6px;">
+                        <button id="activatePickLocationBtn" class="btn-primary btn-sm">✏️ 激活地图点选定位</button>
+                        <button id="clearCustomLocationBtn" class="btn-sm">🗑️ 清除</button>
+                        <button id="setCustomAsStartBtn" class="btn-sm">🚩 设为路线起点</button>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <div class="section-title">❤️ 我的收藏</div>
+                    <div id="favoritesList" class="favorites-list">暂无收藏</div>
+                </div>
+                <div class="section-card">
+                    <div class="section-title">✨ 随机推荐 · 景点</div>
+                    <div id="attractionsList" class="recommend-list">加载中...</div>
+                </div>
+                <div class="section-card">
+                    <div class="section-title">🍜 随机推荐 · 美食</div>
+                    <div id="foodList" class="recommend-list">加载中...</div>
+                </div>
+                <div class="section-card">
+                    <div class="section-title">🏨 随机推荐 · 酒店</div>
+                    <div id="hotelList" class="recommend-list">加载中...</div>
+                </div>
+                <div id="adminPanel" style="display:none;" class="section-card">
+                    <div class="section-title">🔧 管理员工具</div>
+                    <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;" id="adminButtonGroup">
+                        <button id="addNewPoiBtn" class="btn-primary btn-sm">➕ 添加新地点</button>
+                        <button id="refreshHotelFoodBtn" class="btn-warning btn-sm">🔄 刷新酒店/美食</button>
+                        <button id="resetAllCoordsBtn" class="btn-danger btn-sm">🔄 重置所有数据</button>
+                    </div>
+                    <div style="font-size:11px; margin:5px 0;">点击「编辑信息」可修改全部内容（含图片焦点）</div>
+                    <div id="adminPoiList" class="admin-list" style="max-height:200px;">加载管理中...</div>
+                </div>
+                <div id="poiInfo"><div class="welcome-msg">点击地图标记查看详情<br>或点击推荐项目快速跳转</div></div>
+                <div style="border-top:1px solid #eee; padding-top:12px; margin-top:4px;">
+                    <div style="display: flex; gap:8px;"><button id="setStartBtn" style="flex:1; background:#27ae60;">🚩 设为起点</button><button id="setEndBtn" style="flex:1; background:#e67e22;">🏁 设为终点</button></div>
+                    <div style="margin:8px 0;"><select id="transportSelect" style="padding:6px; border-radius:40px; width:100%;"><option value="driving">🚗 驾车</option><option value="walking">🚶 步行</option><option value="bicycling">🚲 骑行</option><option value="transit">🚌 公交</option><option value="train">🚄 高铁</option><option value="plane">✈️ 飞机</option></select></div>
+                    <div id="routeInfo" class="route-info" style="display:none;"></div>
+                    <button id="planRouteBtn" class="btn-warning" style="width:100%;">🛣️ 规划路线</button>
+                    <button id="shareFileBtn" style="width:100%; margin-top:6px; background:#3498db; color:white;">📄 导出行程文件</button>
+                    <button id="shareLinkQrBtn" style="width:100%; margin-top:6px; background:#9b59b6; color:white;">🔗 二维码/链接分享</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 模态框 -->
+<div id="loginModal" class="modal"><div class="modal-content"><h3>管理员登录</h3><input type="text" id="adminUser" placeholder="账号" style="width:100%; margin:10px 0; padding:8px;"><input type="password" id="adminPass" placeholder="密码" style="width:100%; margin:10px 0; padding:8px;"><div class="action-group"><button id="modalLoginBtn">登录</button><button id="closeModalBtn">取消</button></div></div></div>
+<div id="addPoiModal" class="modal"><div class="modal-content"><h3>➕ 添加新地点</h3><select id="newPoiType"><option value="景点">🏞️ 景点</option><option value="美食">🍜 美食</option><option value="酒店">🏨 酒店</option></select><input type="text" id="newPoiName" placeholder="名称*" required><div class="coord-input-group"><input type="text" id="newPoiLat" placeholder="纬度 (例如 23.109)" style="flex:1;"><button id="pickNewLocationBtn" class="btn-sm pick-coord-btn">📍 地图选点</button></div><input type="text" id="newPoiLng" placeholder="经度 (例如 113.319)" required><select id="newPoiStar"><option value="5">★★★★★ 5星</option><option value="4">★★★★☆ 4星</option><option value="3">★★★☆☆ 3星</option><option value="2">★★☆☆☆ 2星</option><option value="1">★☆☆☆☆ 1星</option></select><input type="text" id="newPoiAddress" placeholder="地址 (可选)"><textarea id="newPoiDesc" rows="2" placeholder="简介 (可选)"></textarea>
+                <input type="file" id="newPoiImageFile" accept="image/*" style="margin:8px 0;">
+                <img id="newPoiImagePreview" class="image-preview" alt="图片预览">
+                <input type="text" id="newPoiImageUrl" placeholder="或输入图片URL (可选)" style="margin-top:0;">
+                <div class="focus-control"><label>焦点 X%:</label><input type="range" id="newImgFocusX" min="0" max="100" value="50"><span id="newFocusXVal" class="range-value">50%</span></div>
+                <div class="focus-control"><label>焦点 Y%:</label><input type="range" id="newImgFocusY" min="0" max="100" value="50"><span id="newFocusYVal" class="range-value">50%</span></div>
+                <div class="action-group"><button id="confirmAddPoiBtn" class="btn-primary">确认添加</button><button id="cancelAddPoiBtn">取消</button></div></div></div>
+<div id="editPoiModal" class="modal"><div class="modal-content"><h3>✏️ 编辑地点信息</h3><input type="text" id="editPoiName" placeholder="名称"><select id="editPoiType"><option value="景点">景点</option><option value="美食">美食</option><option value="酒店">酒店</option></select><select id="editPoiStar"><option value="5">5星</option><option value="4">4星</option><option value="3">3星</option><option value="2">2星</option><option value="1">1星</option></select><input type="text" id="editPoiAddress" placeholder="地址"><textarea id="editPoiDesc" rows="2" placeholder="简介"></textarea>
+                <input type="file" id="editPoiImageFile" accept="image/*" style="margin:8px 0;">
+                <img id="editPoiImagePreview" class="image-preview" alt="图片预览">
+                <input type="text" id="editPoiImageUrl" placeholder="或输入图片URL (可选)" style="margin-top:0;">
+                <div class="focus-control"><label>焦点 X%:</label><input type="range" id="editImgFocusX" min="0" max="100" value="50"><span id="editFocusXVal" class="range-value">50%</span></div>
+                <div class="focus-control"><label>焦点 Y%:</label><input type="range" id="editImgFocusY" min="0" max="100" value="50"><span id="editFocusYVal" class="range-value">50%</span></div>
+                <div class="action-group"><button id="confirmEditPoiBtn" class="btn-primary">保存修改</button><button id="cancelEditPoiBtn">取消</button></div></div></div>
+<div id="shareModal" class="modal"><div class="modal-content"><h3>分享行程/地点</h3><div class="share-options"><button id="copyLinkBtn">📋 复制链接</button><button id="showQrBtn">📱 生成二维码</button></div><div id="qrArea" style="display:none;"><div id="qrCodeContainer"></div></div><button class="close-modal" onclick="document.getElementById('shareModal').style.display='none'">关闭</button></div></div>
+
+<script>
+    // ================= 配置 =================
+    const AMAP_WEB_API_KEY = "c1d967b948c60812904574c42ee7d27b";
+    const rawGuangdongPOI = [
+        { id: 1, name: "广州塔 (小蛮腰)", type: "景点", address: "广州市海珠区阅江西路222号", lat: 23.109, lng: 113.319, desc: "广州地标，塔高600米，观景平台俯瞰羊城", star: 5, image: "https://picsum.photos/id/10/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 2, name: "陈家祠", type: "景点", address: "广州市荔湾区中山七路恩龙里34号", lat: 23.126, lng: 113.248, desc: "岭南建筑艺术的明珠，精美木雕砖雕", star: 4, image: "https://picsum.photos/id/20/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 3, name: "白云山风景名胜区", type: "景点", address: "广州市白云区广园中路801号", lat: 23.185, lng: 113.294, desc: "羊城第一秀，天然氧吧，登山观景", star: 4, image: "https://picsum.photos/id/30/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 4, name: "深圳世界之窗", type: "景点", address: "深圳市南山区深南大道9037号", lat: 22.537, lng: 113.971, desc: "微缩世界景观主题公园，一天看遍全球", star: 4, image: "https://picsum.photos/id/40/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 5, name: "珠海长隆海洋王国", type: "景点", address: "珠海市横琴新区富祥湾", lat: 22.098, lng: 113.531, desc: "世界级海洋主题公园，鲸鲨馆、烟花秀", star: 5, image: "https://picsum.photos/id/50/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 6, name: "佛山祖庙", type: "景点", address: "佛山市禅城区祖庙路21号", lat: 23.032, lng: 113.113, desc: "岭南文化圣地，黄飞鸿纪念馆，醒狮表演", star: 4, image: "https://picsum.photos/id/60/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 7, name: "丹霞山", type: "景点", address: "韶关市仁化县丹霞山风景区", lat: 25.030, lng: 113.695, desc: "世界自然遗产，红石公园，阳元石", star: 5, image: "https://picsum.photos/id/70/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 8, name: "开平碉楼与村落", type: "景点", address: "江门市开平市塘口镇", lat: 22.365, lng: 112.636, desc: "世界文化遗产，侨乡建筑，让子弹飞取景地", star: 5, image: "https://picsum.photos/id/80/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 9, name: "肇庆七星岩", type: "景点", address: "肇庆市端州区七星路1号", lat: 23.074, lng: 112.475, desc: "岭南第一奇观，山水如画，溶洞探秘", star: 4, image: "https://picsum.photos/id/90/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 10, name: "罗浮山风景名胜区", type: "景点", address: "惠州市博罗县长宁镇", lat: 23.258, lng: 114.008, desc: "岭南第一山，道教名山，国家5A级景区", star: 5, image: "https://picsum.photos/id/100/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 11, name: "炳胜品味 (珠江新城店)", type: "美食", address: "广州市天河区冼村路2号", lat: 23.120, lng: 113.324, desc: "米其林粤菜，招牌菠萝包，脆皮叉烧", star: 5, image: "https://picsum.photos/id/110/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 12, name: "惠食佳 (滨江大公馆店)", type: "美食", address: "广州市海珠区滨江西路172号", lat: 23.109, lng: 113.255, desc: "米其林一星，啫啫煲，黄鳝饭", star: 5, image: "https://picsum.photos/id/120/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 13, name: "顺德松记餐厅", type: "美食", address: "佛山市顺德区容桂文华路39号", lat: 22.770, lng: 113.270, desc: "顺德清水打边炉，食材新鲜，鱼滑虾滑", star: 4, image: "https://picsum.photos/id/130/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 14, name: "潮汕陈记顺和牛肉店", type: "美食", address: "汕头市龙湖区金砂东路", lat: 23.365, lng: 116.715, desc: "潮汕牛肉火锅，鲜切牛肉，沙茶酱绝配", star: 4, image: "https://picsum.photos/id/140/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 15, name: "深圳润园四季椰子鸡", type: "美食", address: "深圳市福田区福华三路118号", lat: 22.535, lng: 114.055, desc: "正宗椰子鸡，竹笙马蹄，煲仔饭", star: 4, image: "https://picsum.photos/id/150/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 16, name: "广州瑰丽酒店", type: "酒店", address: "广州市天河区珠江东路6号", lat: 23.120, lng: 113.325, desc: "广州最高酒店，高空泳池，精致下午茶", star: 5, image: "https://picsum.photos/id/160/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 17, name: "深圳鹏瑞莱佛士酒店", type: "酒店", address: "深圳市南山区中心路3008号", lat: 22.517, lng: 113.940, desc: "顶级奢华酒店，云端体验，深圳湾海景", star: 5, image: "https://picsum.photos/id/170/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 18, name: "珠海横琴凯悦酒店", type: "酒店", address: "珠海市横琴新区彩虹路1号", lat: 22.140, lng: 113.540, desc: "靠近长隆，亲子友好，现代设计", star: 4, image: "https://picsum.photos/id/180/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 19, name: "佛山罗浮宫索菲特酒店", type: "酒店", address: "佛山市顺德区乐从镇河滨南路", lat: 22.950, lng: 113.120, desc: "家居艺术酒店，法式风情，设计感强", star: 5, image: "https://picsum.photos/id/190/600/400", imgFocusX: 50, imgFocusY: 50 },
+        { id: 20, name: "丹霞山禅意客栈", type: "酒店", address: "韶关市仁化县丹霞山景区内", lat: 25.030, lng: 113.695, desc: "禅意风格，山景房，静心养生", star: 4, image: "https://picsum.photos/id/200/600/400", imgFocusX: 50, imgFocusY: 50 }
+    ];
+    const updatedHotelsFromNetwork = [ { id: 16, name: "广州四季酒店", type: "酒店", address: "广州市天河区珠江西路5号", lat: 23.119, lng: 113.324, desc: "奢华酒店，云端体验，广州塔景观", star: 5, image: "https://picsum.photos/id/210/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 17, name: "深圳瑞吉酒店", type: "酒店", address: "深圳市罗湖区深南东路5016号", lat: 22.547, lng: 114.107, desc: "经典奢华，管家服务，京基100大厦", star: 5, image: "https://picsum.photos/id/220/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 18, name: "珠海瑞吉酒店", type: "酒店", address: "珠海市香洲区湾仔银湾路1663号", lat: 22.175, lng: 113.527, desc: "一线海景，高端服务，意大利餐厅", star: 5, image: "https://picsum.photos/id/230/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 19, name: "佛山保利洲际酒店", type: "酒店", address: "佛山市南海区灯湖东路20号", lat: 23.062, lng: 113.146, desc: "千灯湖畔，商务休闲，行政酒廊", star: 4, image: "https://picsum.photos/id/240/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 20, name: "丹霞山原色民宿", type: "酒店", address: "韶关市仁化县丹霞街道青湖塘村", lat: 25.022, lng: 113.689, desc: "特色民宿，亲近自然，观山景", star: 4, image: "https://picsum.photos/id/250/600/400", imgFocusX: 50, imgFocusY: 50 } ];
+    const updatedFoodsFromNetwork = [ { id: 11, name: "广州酒家 (文昌南路店)", type: "美食", address: "广州市荔湾区文昌南路2号", lat: 23.114, lng: 113.247, desc: "老字号粤菜，广式早茶经典，虾饺烧卖", star: 4, image: "https://picsum.photos/id/260/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 12, name: "陶陶居 (第十甫路店)", type: "美食", address: "广州市荔湾区第十甫路20号", lat: 23.114, lng: 113.252, desc: "百年老字号，传统点心，月饼闻名", star: 4, image: "https://picsum.photos/id/270/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 13, name: "点都德 (聚福楼店)", type: "美食", address: "广州市天河区花城大道16号", lat: 23.119, lng: 113.326, desc: "新派广式茶点，招牌红米肠，金沙海虾红米肠", star: 4, image: "https://picsum.photos/id/280/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 14, name: "汕头八合里海记牛肉店", type: "美食", address: "汕头市金平区黄岗路坪西6座", lat: 23.357, lng: 116.702, desc: "潮汕牛肉火锅代表，现切牛肉，手打牛肉丸", star: 4, image: "https://picsum.photos/id/290/600/400", imgFocusX: 50, imgFocusY: 50 }, { id: 15, name: "顺德美食-猪肉婆私房菜", type: "美食", address: "佛山市顺德区容桂细窖展业路31号", lat: 22.798, lng: 113.258, desc: "正宗顺德菜，鱼生烧鹅，猪肚汤", star: 5, image: "https://picsum.photos/id/300/600/400", imgFocusX: 50, imgFocusY: 50 } ];
+    
+    let map, currentBasemap, currentMarkersLayer, allMarkers = [], currentSelectedPoi = null, userLocationMarker = null;
+    let startPoint = null, endPoint = null, currentRouteLayer = null, currentArrowLayer = null;
+    let isAdmin = false, pickLocationActive = false, customLocationMarker = null, customLocation = null;
+    let favorites = [], defaultPOIData = [], currentPOIData = [];
+    let activePickForPoiId = null, activePickForNewPoi = false, editingPoiId = null;
+    
+    function fileToBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.readAsDataURL(file); reader.onload = () => resolve(reader.result); reader.onerror = reject; }); }
+    const basemaps = { "高德地图": L.tileLayer('https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}'), "高德卫星图": L.tileLayer('https://webst01.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}') };
+    function initMap() { map = L.map('mapContainer').setView([23.13, 113.26], 8); currentBasemap = basemaps["高德地图"]; currentBasemap.addTo(map); currentMarkersLayer = L.layerGroup().addTo(map); }
+    async function convertCoordsIfNeeded(pois) { if (!AMAP_WEB_API_KEY) return pois; const coordsStr = pois.map(p => `${p.lng},${p.lat}`).join(';'); const url = `https://restapi.amap.com/v3/assistant/coordinate/convert?coords=${encodeURIComponent(coordsStr)}&coordsys=gps&output=JSON&key=${AMAP_WEB_API_KEY}`; try { const res = await fetch(url); const data = await res.json(); if (data.status === '1' && data.locations) { const locs = data.locations.split(';'); return pois.map((p, i) => { let [lng, lat] = locs[i].split(',').map(Number); return { ...p, lat, lng }; }); } } catch (e) { console.error("坐标转换失败", e); } return pois; }
+    async function loadDefaultData() { if (defaultPOIData.length === 0) defaultPOIData = await convertCoordsIfNeeded(rawGuangdongPOI); return defaultPOIData; }
+    async function loadData() { const defaultData = await loadDefaultData(); const stored = localStorage.getItem('guangdongPOI_custom'); currentPOIData = stored ? JSON.parse(stored) : defaultData.map(p => ({ ...p })); refreshDisplay(); updateRecommendLists(); if (isAdmin && document.getElementById('adminPanel').style.display === 'block') renderAdminPanel(); }
+    function saveAdminChanges(updatedPoi) { localStorage.setItem('guangdongPOI_custom', JSON.stringify(updatedPoi)); currentPOIData = updatedPoi; refreshDisplay(); updateRecommendLists(); if (isAdmin) renderAdminPanel(); favorites = favorites.map(f => { let found = updatedPoi.find(p => p.id === f.id); return found ? { ...found } : f; }); saveFav(); }
+    
+    // ========== 跨设备备份与恢复 (导出/导入完整数据) ==========
+    function exportFullBackup() {
+        if (!isAdmin) { alert("仅管理员可导出数据备份"); return; }
+        const backup = { version: "1.0", exportTime: new Date().toISOString(), pois: currentPOIData, favorites: favorites };
+        const dataStr = JSON.stringify(backup, null, 2);
+        const blob = new Blob([dataStr], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `guangdong_travel_backup_${new Date().toISOString().slice(0,19)}.json`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+        alert("✅ 完整数据已导出 (包含所有地点、图片、收藏)");
+    }
+    function importFullBackup(file) {
+        if (!isAdmin) { alert("仅管理员可导入备份恢复数据"); return; }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const backup = JSON.parse(e.target.result);
+                if (!backup.pois || !Array.isArray(backup.pois)) throw new Error("无效备份文件");
+                const newPois = backup.pois;
+                const newFavs = backup.favorites || [];
+                // 替换全局数据
+                currentPOIData = newPois;
+                favorites = newFavs.filter(f => newPois.some(p => p.id === f.id));
+                localStorage.setItem('guangdongPOI_custom', JSON.stringify(currentPOIData));
+                localStorage.setItem('guangdong_fav', JSON.stringify(favorites));
+                // 重置路线及选中状态
+                if (currentRouteLayer) map.removeLayer(currentRouteLayer);
+                if (currentArrowLayer) map.removeLayer(currentArrowLayer);
+                startPoint = null; endPoint = null; currentSelectedPoi = null;
+                if (customLocationMarker) map.removeLayer(customLocationMarker);
+                customLocation = null;
+                document.getElementById('routeInfo').style.display = 'none';
+                document.getElementById('customLocStatus').innerHTML = '未设置自定义位置，点击激活地图点选定位';
+                // 刷新界面
+                refreshDisplay();
+                updateRecommendLists();
+                renderFav();
+                if (isAdmin) renderAdminPanel();
+                alert("✅ 数据恢复成功！当前展示的已是备份中的完整内容（含图片焦点等）");
+                map.setView([23.13, 113.26], 8);
+            } catch(err) { alert("导入失败: 文件解析错误 " + err.message); }
+        };
+        reader.readAsText(file);
+    }
+    function addImportExportButtons() {
+        const container = document.getElementById("adminButtonGroup");
+        if (!container || document.getElementById("exportDataBtn")) return;
+        const exportBtn = document.createElement("button"); exportBtn.id = "exportDataBtn"; exportBtn.className = "btn-primary btn-sm"; exportBtn.innerHTML = "📤 导出数据备份"; exportBtn.onclick = exportFullBackup;
+        const importBtn = document.createElement("button"); importBtn.id = "importDataBtn"; importBtn.className = "btn-warning btn-sm"; importBtn.innerHTML = "📥 导入备份文件"; 
+        const fileInput = document.createElement("input"); fileInput.type = "file"; fileInput.id = "importFileInput"; fileInput.accept = ".json"; fileInput.style.display = "none";
+        importBtn.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => { if(e.target.files.length) importFullBackup(e.target.files[0]); fileInput.value = ""; };
+        container.appendChild(exportBtn); container.appendChild(importBtn); document.body.appendChild(fileInput);
+    }
+    
+    function refreshHotelAndFoodFromNetwork() { if (!isAdmin) return; const scenicSpots = currentPOIData.filter(p => p.type === '景点'); let newHotels = updatedHotelsFromNetwork.map(hotel => { let existing = currentPOIData.find(p => p.id === hotel.id && p.type === '酒店'); return existing ? { ...existing, ...hotel, type: '酒店' } : hotel; }); let newFoods = updatedFoodsFromNetwork.map(food => { let existing = currentPOIData.find(p => p.id === food.id && p.type === '美食'); return existing ? { ...existing, ...food, type: '美食' } : food; }); let other = currentPOIData.filter(p => p.type !== '景点' && p.type !== '美食' && p.type !== '酒店'); const updated = [...scenicSpots, ...newHotels, ...newFoods, ...other]; const uniqueMap = new Map(); updated.forEach(p => uniqueMap.set(p.id, p)); saveAdminChanges(Array.from(uniqueMap.values())); alert('酒店和美食已更新为最新网络数据（模拟）。'); }
+    async function addNewPoi() { const type = document.getElementById('newPoiType').value; const name = document.getElementById('newPoiName').value.trim(); const lat = parseFloat(document.getElementById('newPoiLat').value); const lng = parseFloat(document.getElementById('newPoiLng').value); const star = parseInt(document.getElementById('newPoiStar').value); const address = document.getElementById('newPoiAddress').value.trim(); const desc = document.getElementById('newPoiDesc').value.trim(); let image = document.getElementById('newPoiImageUrl').value.trim(); const fileInput = document.getElementById('newPoiImageFile'); if (fileInput.files.length > 0) image = await fileToBase64(fileInput.files[0]); else if (!image) image = "https://picsum.photos/id/1/600/400"; const imgFocusX = parseInt(document.getElementById('newImgFocusX').value); const imgFocusY = parseInt(document.getElementById('newImgFocusY').value); if (!name || isNaN(lat) || isNaN(lng)) { alert('请填写完整的名称和经纬度'); return; } const newId = Math.max(...currentPOIData.map(p => p.id), 0) + 1; const newPoi = { id: newId, name, type, address: address || '待补充', lat, lng, desc: desc || '新增地点', star, image, imgFocusX, imgFocusY }; const updated = [...currentPOIData, newPoi]; saveAdminChanges(updated); document.getElementById('addPoiModal').style.display = 'none'; alert(`成功添加 ${name}`); }
+    function deletePoi(poiId) { if (!isAdmin) return; if (confirm('确定要删除该地点吗？')) { const updated = currentPOIData.filter(p => p.id !== poiId); saveAdminChanges(updated); if (currentSelectedPoi && currentSelectedPoi.id === poiId) { document.getElementById('poiInfo').innerHTML = '<div class="welcome-msg">地点已删除</div>'; currentSelectedPoi = null; } if (startPoint && startPoint.id === poiId) startPoint = null; if (endPoint && endPoint.id === poiId) endPoint = null; favorites = favorites.filter(f => f.id !== poiId); saveFav(); } }
+    function editPoi(poiId) { const poi = currentPOIData.find(p => p.id === poiId); if (!poi) return; editingPoiId = poiId; document.getElementById('editPoiName').value = poi.name; document.getElementById('editPoiType').value = poi.type; document.getElementById('editPoiStar').value = poi.star; document.getElementById('editPoiAddress').value = poi.address || ''; document.getElementById('editPoiDesc').value = poi.desc || ''; document.getElementById('editPoiImageUrl').value = poi.image && !poi.image.startsWith('data:') ? poi.image : ''; document.getElementById('editPoiImageFile').value = ''; const preview = document.getElementById('editPoiImagePreview'); if (poi.image) { preview.src = poi.image; preview.style.display = 'block'; preview.style.objectPosition = `${poi.imgFocusX || 50}% ${poi.imgFocusY || 50}%`; } else preview.style.display = 'none'; document.getElementById('editImgFocusX').value = poi.imgFocusX || 50; document.getElementById('editImgFocusY').value = poi.imgFocusY || 50; document.getElementById('editFocusXVal').innerText = (poi.imgFocusX || 50) + '%'; document.getElementById('editFocusYVal').innerText = (poi.imgFocusY || 50) + '%'; document.getElementById('editPoiModal').style.display = 'flex'; const updateEditPreview = () => { const fx = document.getElementById('editImgFocusX').value; const fy = document.getElementById('editImgFocusY').value; preview.style.objectPosition = `${fx}% ${fy}%`; document.getElementById('editFocusXVal').innerText = fx + '%'; document.getElementById('editFocusYVal').innerText = fy + '%'; }; document.getElementById('editImgFocusX').oninput = updateEditPreview; document.getElementById('editImgFocusY').oninput = updateEditPreview; }
+    async function saveEditPoi() { const newName = document.getElementById('editPoiName').value.trim(); const newType = document.getElementById('editPoiType').value; const newStar = parseInt(document.getElementById('editPoiStar').value); const newAddress = document.getElementById('editPoiAddress').value.trim(); const newDesc = document.getElementById('editPoiDesc').value.trim(); let newImage = document.getElementById('editPoiImageUrl').value.trim(); const fileInput = document.getElementById('editPoiImageFile'); if (fileInput.files.length > 0) newImage = await fileToBase64(fileInput.files[0]); const newFocusX = parseInt(document.getElementById('editImgFocusX').value); const newFocusY = parseInt(document.getElementById('editImgFocusY').value); if (!newName) { alert('名称不能为空'); return; } const index = currentPOIData.findIndex(p => p.id === editingPoiId); if (index !== -1) { currentPOIData[index].name = newName; currentPOIData[index].type = newType; currentPOIData[index].star = newStar; currentPOIData[index].address = newAddress; currentPOIData[index].desc = newDesc; if (newImage) currentPOIData[index].image = newImage; currentPOIData[index].imgFocusX = newFocusX; currentPOIData[index].imgFocusY = newFocusY; saveAdminChanges(currentPOIData); favorites = favorites.map(f => f.id === editingPoiId ? { ...currentPOIData[index] } : f); saveFav(); alert('地点信息已更新'); } document.getElementById('editPoiModal').style.display = 'none'; editingPoiId = null; }
+    async function resetAllCoordinates() { if (!isAdmin) return; if (confirm('重置所有数据至原始值？')) { const defaultData = await loadDefaultData(); const resetData = defaultData.map(p => ({ ...p })); saveAdminChanges(resetData); alert('数据已重置'); } }
+    function getCurrentFilteredPois() { const keyword = document.getElementById('keywordInput').value; const scenicMin = document.getElementById('starFilterScenic').value; const foodMin = document.getElementById('starFilterFood').value; const hotelMin = document.getElementById('starFilterHotel').value; const showScenic = document.getElementById('toggleScenic').checked; const showFood = document.getElementById('toggleFood').checked; const showHotel = document.getElementById('toggleHotel').checked; return currentPOIData.filter(p => { if (keyword && !p.name.includes(keyword) && !p.type.includes(keyword) && !(p.address || '').includes(keyword)) return false; if (p.type === '景点' && !showScenic) return false; if (p.type === '美食' && !showFood) return false; if (p.type === '酒店' && !showHotel) return false; if (p.type === '景点' && scenicMin !== 'all' && p.star < parseInt(scenicMin)) return false; if (p.type === '美食' && foodMin !== 'all' && p.star < parseInt(foodMin)) return false; if (p.type === '酒店' && hotelMin !== 'all' && p.star < parseInt(hotelMin)) return false; return true; }); }
+    function refreshDisplay() { const filtered = getCurrentFilteredPois(); renderMarkers(filtered); document.getElementById('filterCount').innerText = `共${filtered.length}个地点`; if (currentSelectedPoi && filtered.some(p => p.id === currentSelectedPoi.id)) displayPoiDetails(currentSelectedPoi); else if (filtered.length) displayPoiDetails(filtered[0]); else document.getElementById('poiInfo').innerHTML = '<div class="welcome-msg">😢 没有找到符合条件的地点</div>'; }
+    function renderMarkers(pois) { currentMarkersLayer.clearLayers(); pois.forEach(poi => { let color = ['#95a5a6', '#2ecc71', '#f1c40f', '#e67e22', '#e74c3c'][poi.star - 1] || '#95a5a6'; let icon = L.divIcon({ html: `<div style="background:${color};width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid white;"></div>`, iconSize: [22, 22] }); let m = L.marker([poi.lat, poi.lng], { icon }).bindPopup(`<b>${poi.name}</b><br>${'★'.repeat(poi.star)}${'☆'.repeat(5 - poi.star)}<br>${poi.type}`).on('click', () => displayPoiDetails(poi)); currentMarkersLayer.addLayer(m); }); }
+    function displayPoiDetails(poi) { currentSelectedPoi = poi; let favStatus = favorites.some(f => f.id === poi.id) ? '❤️ 已收藏' : '🤍 收藏'; let adminBtns = ''; if (isAdmin) adminBtns = `<div style="display:flex; gap:8px; margin-top:8px;"><button id="adminEditInfoBtn" style="background:#3498db; color:white; flex:1;">✏️ 编辑信息</button><button id="adminDeleteBtn" style="background:#e74c3c; color:white; flex:1;">🗑️ 删除此地点</button></div>`; const imgStyle = `object-fit: cover; object-position: ${poi.imgFocusX || 50}% ${poi.imgFocusY || 50}%;`; let html = `<div class="poi-card"><div class="poi-name">${poi.name}</div><div class="star-rating">${'★'.repeat(poi.star)}${'☆'.repeat(5 - poi.star)} ${poi.star}星</div><span class="poi-type">${poi.type}</span><img src="${poi.image || 'https://picsum.photos/id/1/600/400'}" alt="${poi.name}" style="${imgStyle}" onerror="this.src='https://picsum.photos/id/1/600/400'"><div>📍 ${poi.address || '暂无'}</div><div>📖 ${poi.desc || ''}</div><div id="weatherContainer"></div><button id="favDetailBtn" style="margin-top:6px; background:#e84393; color:white; border:none; border-radius:20px; padding:4px 12px;">${favStatus}</button>${adminBtns}</div>`; document.getElementById('poiInfo').innerHTML = html; fetchWeather(poi); document.getElementById('favDetailBtn')?.addEventListener('click', () => { if (favorites.some(f => f.id === poi.id)) removeFavorite(poi.id); else addFavorite(poi); displayPoiDetails(poi); }); if (isAdmin) { document.getElementById('adminEditInfoBtn')?.addEventListener('click', () => editPoi(poi.id)); document.getElementById('adminDeleteBtn')?.addEventListener('click', () => deletePoi(poi.id)); } }
+    async function fetchWeather(poi) { const wDiv = document.getElementById('weatherContainer'); if (!wDiv) return; wDiv.innerHTML = '⏳ 天气获取中...'; try { let cityCode = await getCityByLocation(poi.lat, poi.lng); if (!cityCode) return; let url = `https://restapi.amap.com/v3/weather/weatherInfo?city=${cityCode}&extensions=all&key=${AMAP_WEB_API_KEY}`; let res = await fetch(url); let data = await res.json(); if (data.status === '1' && data.forecasts) { let fc = data.forecasts[0]; let casts = fc.casts.slice(0, 2); let html = '<div class="weather-info">'; casts.forEach(c => { html += `📅 ${c.date} ${c.dayweather} ${c.daytemp}℃<br>`; }); let temp = parseInt(casts[0].daytemp); let dress = temp > 28 ? '短袖' : (temp > 20 ? '长袖' : '外套'); html += `🧥 穿衣建议：${dress}</div>`; wDiv.innerHTML = html; } else wDiv.innerHTML = '天气数据暂不可用'; } catch (e) { wDiv.innerHTML = '天气获取失败'; } }
+    async function getCityByLocation(lat, lng) { if (!AMAP_WEB_API_KEY) return null; let url = `https://restapi.amap.com/v3/geocode/regeo?location=${lng},${lat}&key=${AMAP_WEB_API_KEY}`; try { let res = await fetch(url); let data = await res.json(); return data.regeocode?.addressComponent?.adcode || null; } catch (e) { return null; } }
+    function getRandomItems(arr, n) { if (!arr.length) return []; const shuffled = [...arr]; for (let i = shuffled.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]; } return shuffled.slice(0, Math.min(n, shuffled.length)); }
+    function updateRecommendLists() { const allAttractions = currentPOIData.filter(p => p.type === '景点'); const allFoods = currentPOIData.filter(p => p.type === '美食'); const allHotels = currentPOIData.filter(p => p.type === '酒店'); function build(listEl, arr) { listEl.innerHTML = ''; arr.forEach(poi => { let div = document.createElement('div'); div.className = 'recommend-item'; const imgStyle = `object-fit: cover; object-position: ${poi.imgFocusX || 50}% ${poi.imgFocusY || 50}%; width:40px; height:40px; border-radius:8px; margin-right:8px;`; div.innerHTML = `<div class="rec-item-content"><img class="rec-img" src="${poi.image || 'https://picsum.photos/id/1/40/40'}" style="${imgStyle}" onerror="this.src='https://picsum.photos/id/1/40/40'"><span>${poi.name}</span></div><span>${'★'.repeat(poi.star)}</span>`; div.onclick = () => { map.setView([poi.lat, poi.lng], 13); displayPoiDetails(poi); }; listEl.appendChild(div); }); if (arr.length === 0) listEl.innerHTML = '<div style="color:#999; padding:4px;">暂无数据</div>'; } build(document.getElementById('attractionsList'), getRandomItems(allAttractions, 5)); build(document.getElementById('foodList'), getRandomItems(allFoods, 5)); build(document.getElementById('hotelList'), getRandomItems(allHotels, 5)); }
+    function loadFav() { let stored = localStorage.getItem('guangdong_fav'); if (stored) favorites = JSON.parse(stored); renderFav(); }
+    function saveFav() { localStorage.setItem('guangdong_fav', JSON.stringify(favorites)); renderFav(); }
+    function addFavorite(poi) { if (!favorites.some(f => f.id === poi.id)) { favorites.push(poi); saveFav(); } }
+    function removeFavorite(id) { favorites = favorites.filter(f => f.id !== id); saveFav(); }
+    function renderFav() { let container = document.getElementById('favoritesList'); if (!container) return; if (favorites.length === 0) { container.innerHTML = '暂无收藏'; return; } container.innerHTML = ''; favorites.forEach(poi => { let div = document.createElement('div'); div.className = 'fav-item'; div.innerHTML = `<span style="flex:1">${poi.name}</span><button class="fav-remove" data-id="${poi.id}">✖</button>`; div.querySelector('.fav-remove').onclick = (e) => { e.stopPropagation(); removeFavorite(poi.id); }; div.querySelector('span').onclick = () => { map.setView([poi.lat, poi.lng], 12); displayPoiDetails(poi); }; container.appendChild(div); }); }
+    function renderAdminPanel() { let container = document.getElementById('adminPoiList'); if (!container) return; container.innerHTML = ''; currentPOIData.forEach(poi => { let row = document.createElement('div'); row.className = 'admin-item'; row.innerHTML = `<span style="width:100px; font-weight:500;">${poi.name}</span><div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;"><input type="text" value="${poi.lat.toFixed(5)}" id="lat_${poi.id}" style="width:70px;"><input type="text" value="${poi.lng.toFixed(5)}" id="lng_${poi.id}" style="width:70px;"><button data-id="${poi.id}" class="pickCoordBtn" style="background:#3498db;">📍 选点</button><button data-id="${poi.id}" class="saveCoordBtn">保存坐标</button><button data-id="${poi.id}" class="editInfoBtn" style="background:#f39c12;">✏️ 编辑信息</button><button data-id="${poi.id}" class="deletePoiBtn" style="background:#e74c3c;">删除</button></div>`; container.appendChild(row); }); document.querySelectorAll('.saveCoordBtn').forEach(btn => { btn.addEventListener('click', (e) => { let id = parseInt(btn.dataset.id); let newLat = parseFloat(document.getElementById(`lat_${id}`).value); let newLng = parseFloat(document.getElementById(`lng_${id}`).value); if (isNaN(newLat) || isNaN(newLng)) return alert('请输入有效数字'); let index = currentPOIData.findIndex(p => p.id === id); if (index !== -1) { currentPOIData[index].lat = newLat; currentPOIData[index].lng = newLng; saveAdminChanges(currentPOIData); favorites = favorites.map(f => f.id === id ? { ...currentPOIData[index] } : f); saveFav(); alert('坐标已更新'); } }); }); document.querySelectorAll('.deletePoiBtn').forEach(btn => { btn.addEventListener('click', (e) => { let id = parseInt(btn.dataset.id); deletePoi(id); }); }); document.querySelectorAll('.editInfoBtn').forEach(btn => { btn.addEventListener('click', (e) => { let id = parseInt(btn.dataset.id); editPoi(id); }); }); document.querySelectorAll('.pickCoordBtn').forEach(btn => { btn.addEventListener('click', (e) => { let id = parseInt(btn.dataset.id); let poi = currentPOIData.find(p => p.id === id); if (!poi) return; map.setView([poi.lat, poi.lng], 15); activePickForPoiId = id; alert(`地图已跳转到「${poi.name}」，请在地图上点击选择新位置`); map.once('click', (e) => { if (activePickForPoiId === id) { let lat = e.latlng.lat; let lng = e.latlng.lng; document.getElementById(`lat_${id}`).value = lat.toFixed(5); document.getElementById(`lng_${id}`).value = lng.toFixed(5); activePickForPoiId = null; alert(`已获取坐标：(${lat.toFixed(5)}, ${lng.toFixed(5)})，请点击「保存坐标」确认修改`); } }); }); }); }
+    function setCustomLocation(lat, lng) { if (customLocationMarker) map.removeLayer(customLocationMarker); customLocation = { lat, lng }; let icon = L.divIcon({ html: '<div style="background:#f39c12; width:18px; height:18px; border-radius:50%; border:2px solid white; box-shadow:0 0 0 2px #f39c12;"></div>', iconSize: [18, 18] }); customLocationMarker = L.marker([lat, lng], { icon }).bindPopup('📍 我的自定义位置').addTo(map); document.getElementById('customLocStatus').innerHTML = `✅ 自定义位置: (${lat.toFixed(4)}, ${lng.toFixed(4)})`; }
+    function clearCustomLocation() { if (customLocationMarker) map.removeLayer(customLocationMarker); customLocation = null; document.getElementById('customLocStatus').innerHTML = '未设置自定义位置，点击激活地图点选定位'; }
+    function setCustomAsStart() { if (customLocation) { startPoint = { name: '我的位置', lat: customLocation.lat, lng: customLocation.lng, id: -1 }; document.getElementById('routeInfo').innerHTML = `<p>✅ 起点已设为自定义位置</p>`; document.getElementById('routeInfo').style.display = 'block'; } else alert('请先设置自定义位置'); }
+    async function planRoute() { if (!startPoint || !endPoint) return alert("请先设置起点和终点"); const transport = document.getElementById('transportSelect').value; const routeInfoDiv = document.getElementById('routeInfo'); if (currentRouteLayer) map.removeLayer(currentRouteLayer); if (currentArrowLayer) map.removeLayer(currentArrowLayer); if (transport === 'walking' || transport === 'bicycling') { const R = 6371; const dLat = (endPoint.lat - startPoint.lat) * Math.PI / 180; const dLng = (endPoint.lng - startPoint.lng) * Math.PI / 180; const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(startPoint.lat * Math.PI/180) * Math.cos(endPoint.lat * Math.PI/180) * Math.sin(dLng/2) * Math.sin(dLng/2); const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); const distance = R * c; if (distance > 50) { routeInfoDiv.innerHTML = `<p>⚠️ 起点与终点直线距离约${distance.toFixed(0)}公里，${transport === 'walking' ? '步行' : '骑行'}距离过远，建议选择驾车或公共交通。</p>`; routeInfoDiv.style.display = 'block'; return; } } if (transport === 'train' || transport === 'plane') { const coords = [[startPoint.lat, startPoint.lng], [endPoint.lat, endPoint.lng]]; currentRouteLayer = L.polyline(coords, { color: '#ff6b35', weight: 6, opacity: 0.9, dashArray: '10, 10' }).addTo(map); map.fitBounds(currentRouteLayer.getBounds()); const modeName = transport === 'train' ? '🚄 高铁(城际)' : '✈️ 飞机'; routeInfoDiv.innerHTML = `<p><strong>${modeName} 示意路线</strong></p><p>起点：${startPoint.name}</p><p>终点：${endPoint.name}</p><p>💡 提示：实际行程请通过官方渠道查询。</p>`; routeInfoDiv.style.display = 'block'; return; } let apiUrl = '', methodName = ''; switch(transport) { case 'driving': apiUrl = `https://restapi.amap.com/v3/direction/driving?origin=${startPoint.lng},${startPoint.lat}&destination=${endPoint.lng},${endPoint.lat}&extensions=all&output=JSON&key=${AMAP_WEB_API_KEY}`; methodName = '驾车'; break; case 'walking': apiUrl = `https://restapi.amap.com/v3/direction/walking?origin=${startPoint.lng},${startPoint.lat}&destination=${endPoint.lng},${endPoint.lat}&output=JSON&key=${AMAP_WEB_API_KEY}`; methodName = '步行'; break; case 'bicycling': routeInfoDiv.innerHTML = `<p>🚲 骑行路线暂不支持，已切换为步行路线</p>`; apiUrl = `https://restapi.amap.com/v3/direction/walking?origin=${startPoint.lng},${startPoint.lat}&destination=${endPoint.lng},${endPoint.lat}&output=JSON&key=${AMAP_WEB_API_KEY}`; methodName = '骑行(步行模拟)'; break; case 'transit': apiUrl = `https://restapi.amap.com/v3/direction/transit/integrated?origin=${startPoint.lng},${startPoint.lat}&destination=${endPoint.lng},${endPoint.lat}&output=JSON&key=${AMAP_WEB_API_KEY}`; methodName = '公交/地铁'; break; default: return; } try { routeInfoDiv.innerHTML = '<p>⏳ 规划路线中...</p>'; routeInfoDiv.style.display = 'block'; const resp = await fetch(apiUrl); const data = await resp.json(); if (data.status !== '1') { let errorMsg = data.info || '未知错误'; if (errorMsg === 'OVER_DIRECTION_RANGE') errorMsg = '起终点距离过远，超出规划范围，请选择驾车或公共交通'; routeInfoDiv.innerHTML = `<p>❌ 路线规划失败：${errorMsg}</p><p>💡 建议尝试其他出行方式或缩短距离。</p>`; return; } let coords = [], distance = 0, duration = 0; if (transport === 'driving' && data.route?.paths?.length) { const path = data.route.paths[0]; distance = path.distance; duration = path.duration; path.steps.forEach(step => { if(step.polyline) step.polyline.split(';').forEach(p => { let [lng, lat] = p.split(','); coords.push([parseFloat(lat), parseFloat(lng)]); }); }); } else if ((transport === 'walking' || transport === 'bicycling') && data.route?.paths?.length) { const path = data.route.paths[0]; distance = path.distance; duration = path.duration; path.steps.forEach(step => { if(step.polyline) step.polyline.split(';').forEach(p => { let [lng, lat] = p.split(','); coords.push([parseFloat(lat), parseFloat(lng)]); }); }); } else if (transport === 'transit' && data.route?.transits?.length) { const transit = data.route.transits[0]; distance = transit.distance; duration = transit.duration; transit.segments.forEach(seg => { if(seg.bus?.buslines?.length) seg.bus.buslines.forEach(line => { if(line.polyline) line.polyline.split(';').forEach(p => { let [lng, lat] = p.split(','); coords.push([parseFloat(lat), parseFloat(lng)]); }); }); if(seg.walking?.polyline) seg.walking.polyline.split(';').forEach(p => { let [lng, lat] = p.split(','); coords.push([parseFloat(lat), parseFloat(lng)]); }); }); } if (coords.length) { currentRouteLayer = L.polyline(coords, { color: '#ff6b35', weight: 8, opacity: 0.95, lineJoin: 'round' }).addTo(map); if (typeof L.PolylineDecorator !== 'undefined') { currentArrowLayer = L.polylineDecorator(currentRouteLayer, { patterns: [{ offset: 25, repeat: 80, symbol: L.Symbol.arrowHead({ pixelSize: 12, polygon: false, pathOptions: { stroke: true, color: '#ff6b35', weight: 2, fill: true, fillColor: '#ff6b35' } }) }] }).addTo(map); } map.fitBounds(currentRouteLayer.getBounds()); } const distanceKm = (distance / 1000).toFixed(1); const durationMin = Math.floor(duration / 60); routeInfoDiv.innerHTML = `<p><strong>${methodName} 路线</strong></p><p>起点：${startPoint.name}</p><p>终点：${endPoint.name}</p><p>📏 距离：${distanceKm} 公里</p><p>⏱️ 时间：${durationMin} 分钟</p><p style="color:#ff6b35;">✨ 橙色粗线为规划路径，箭头指示方向</p>`; } catch (e) { routeInfoDiv.innerHTML = '<p>❌ 请求失败，请检查网络</p>'; console.error(e); } }
+    function exportItineraryAsFile() { let content = `【广东旅游行程】\n分享时间：${new Date().toLocaleString()}\n`; if (startPoint) content += `起点：${startPoint.name}\n`; if (endPoint) content += `终点：${endPoint.name}\n`; if (currentSelectedPoi) content += `当前查看：${currentSelectedPoi.name}\n`; const blob = new Blob([content], { type: 'text/plain;charset=utf-8' }); const link = document.createElement('a'); const url = URL.createObjectURL(blob); link.href = url; link.download = `广东旅游行程_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`; document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(url); alert('行程已导出为文本文件'); }
+    function getShareableURL() { const url = new URL(window.location.href); url.search = ''; if (currentSelectedPoi) url.searchParams.set('selected', currentSelectedPoi.id); if (startPoint && startPoint.id) url.searchParams.set('start', startPoint.id); if (endPoint && endPoint.id) url.searchParams.set('end', endPoint.id); return url.toString(); }
+    async function copyShareableLink() { const shareUrl = getShareableURL(); try { await navigator.clipboard.writeText(shareUrl); alert('链接已复制'); } catch { alert('无法复制：' + shareUrl); } }
+    function showQRCode() { const shareUrl = getShareableURL(); const qrArea = document.getElementById('qrArea'); const qrContainer = document.getElementById('qrCodeContainer'); qrArea.style.display = 'block'; qrContainer.innerHTML = ''; new QRCode(qrContainer, { text: shareUrl, width: 150, height: 150 }); }
+    function bindImageAndFocus(fileInputId, previewId, focusXId, focusYId, focusXValId, focusYValId) { const fileInput = document.getElementById(fileInputId); const preview = document.getElementById(previewId); const focusX = document.getElementById(focusXId); const focusY = document.getElementById(focusYId); if (fileInput && preview) { fileInput.addEventListener('change', (e) => { if (e.target.files && e.target.files[0]) { const reader = new FileReader(); reader.onload = function(ev) { preview.src = ev.target.result; preview.style.display = 'block'; focusX.value = 50; focusY.value = 50; if (focusXValId) document.getElementById(focusXValId).innerText = '50%'; if (focusYValId) document.getElementById(focusYValId).innerText = '50%'; preview.style.objectPosition = '50% 50%'; }; reader.readAsDataURL(e.target.files[0]); } else { preview.style.display = 'none'; } }); } if (focusX && focusY) { const updatePreview = () => { const fx = focusX.value; const fy = focusY.value; if (preview) preview.style.objectPosition = `${fx}% ${fy}%`; if (focusXValId) document.getElementById(focusXValId).innerText = fx + '%'; if (focusYValId) document.getElementById(focusYValId).innerText = fy + '%'; }; focusX.oninput = updatePreview; focusY.oninput = updatePreview; } }
+    function bindEvents() {
+        document.getElementById('loginBtn').onclick = () => { document.getElementById('loginModal').style.display = 'flex'; };
+        document.getElementById('modalLoginBtn').onclick = async () => { let u = document.getElementById('adminUser').value, p = document.getElementById('adminPass').value; if (u === 'ywy' && p === 'zheshimima666') { isAdmin = true; document.getElementById('loginModal').style.display = 'none'; document.getElementById('loginBtn').style.display = 'none'; document.getElementById('logoutBtn').style.display = 'inline-block'; document.getElementById('adminPanel').style.display = 'block'; renderAdminPanel(); addImportExportButtons(); alert('管理员模式已启用，可完整编辑地点信息、修改坐标、增删地点、上传图片并调整焦点；同时支持跨设备数据备份/恢复'); } else alert('账号或密码错误'); };
+        document.getElementById('logoutBtn').onclick = async () => { isAdmin = false; document.getElementById('adminPanel').style.display = 'none'; document.getElementById('loginBtn').style.display = 'inline-block'; document.getElementById('logoutBtn').style.display = 'none'; alert('已退出管理员模式，地图显示已保存的修改'); };
+        document.getElementById('closeModalBtn').onclick = () => { document.getElementById('loginModal').style.display = 'none'; };
+        document.getElementById('addNewPoiBtn').onclick = () => { document.getElementById('addPoiModal').style.display = 'flex'; };
+        document.getElementById('refreshHotelFoodBtn').onclick = () => { refreshHotelAndFoodFromNetwork(); };
+        document.getElementById('pickNewLocationBtn').onclick = () => { activePickForNewPoi = true; alert('请在地图上点击选择新地点的位置'); map.once('click', (e) => { if (activePickForNewPoi) { document.getElementById('newPoiLat').value = e.latlng.lat.toFixed(5); document.getElementById('newPoiLng').value = e.latlng.lng.toFixed(5); activePickForNewPoi = false; alert(`已获取坐标：(${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)})`); } }); };
+        document.getElementById('confirmAddPoiBtn').onclick = addNewPoi;
+        document.getElementById('cancelAddPoiBtn').onclick = () => { document.getElementById('addPoiModal').style.display = 'none'; };
+        document.getElementById('resetAllCoordsBtn').onclick = resetAllCoordinates;
+        document.getElementById('confirmEditPoiBtn').onclick = saveEditPoi;
+        document.getElementById('cancelEditPoiBtn').onclick = () => { document.getElementById('editPoiModal').style.display = 'none'; editingPoiId = null; };
+        document.getElementById('activatePickLocationBtn').onclick = () => { pickLocationActive = true; alert('激活地图点选模式，点击地图任意位置设置自定义定位'); map.once('click', (e) => { if(pickLocationActive) { setCustomLocation(e.latlng.lat, e.latlng.lng); pickLocationActive = false; } }); };
+        document.getElementById('clearCustomLocationBtn').onclick = clearCustomLocation;
+        document.getElementById('setCustomAsStartBtn').onclick = setCustomAsStart;
+        document.getElementById('setStartBtn').onclick = () => { if(currentSelectedPoi) { startPoint = {...currentSelectedPoi}; document.getElementById('routeInfo').innerHTML = `<p>起点: ${startPoint.name}</p>`; document.getElementById('routeInfo').style.display = 'block'; } else alert('请先点击景点标记'); };
+        document.getElementById('setEndBtn').onclick = () => { if(currentSelectedPoi) { endPoint = {...currentSelectedPoi}; document.getElementById('routeInfo').innerHTML += `<p>终点: ${endPoint.name}</p>`; } else alert('请先点击景点标记'); };
+        document.getElementById('planRouteBtn').onclick = planRoute;
+        document.getElementById('shareFileBtn').onclick = exportItineraryAsFile;
+        document.getElementById('shareLinkQrBtn').onclick = () => { document.getElementById('shareModal').style.display = 'flex'; };
+        document.getElementById('copyLinkBtn').onclick = () => { copyShareableLink(); document.getElementById('shareModal').style.display = 'none'; };
+        document.getElementById('showQrBtn').onclick = showQRCode;
+        document.getElementById('searchBtn').onclick = () => { refreshDisplay(); const filtered = getCurrentFilteredPois(); if (filtered.length === 0) { alert('未找到匹配的地点，请尝试其他关键词'); return; } const latLngs = filtered.map(p => [p.lat, p.lng]); const bounds = L.latLngBounds(latLngs); map.fitBounds(bounds, { padding: [50, 50] }); };
+        document.getElementById('locateBtn').onclick = () => { if(navigator.geolocation) navigator.geolocation.getCurrentPosition(pos => { let {latitude, longitude} = pos.coords; map.setView([latitude, longitude], 13); if(userLocationMarker) map.removeLayer(userLocationMarker); userLocationMarker = L.marker([latitude, longitude], { icon: L.divIcon({ html: '<div style="background:#2c7a4d;width:12px;height:12px;border-radius:50%;border:2px solid white;"></div>' }) }).addTo(map); }); else alert('不支持定位'); };
+        document.getElementById('resetBtn').onclick = () => map.setView([23.13, 113.26], 8);
+        document.querySelectorAll('#toggleScenic, #toggleFood, #toggleHotel, #starFilterScenic, #starFilterFood, #starFilterHotel').forEach(el => el.addEventListener('change', refreshDisplay));
+        bindImageAndFocus('newPoiImageFile', 'newPoiImagePreview', 'newImgFocusX', 'newImgFocusY', 'newFocusXVal', 'newFocusYVal');
+        bindImageAndFocus('editPoiImageFile', 'editPoiImagePreview', 'editImgFocusX', 'editImgFocusY', 'editFocusXVal', 'editFocusYVal');
+        document.getElementById('newImgFocusX').value = 50; document.getElementById('newImgFocusY').value = 50;
+        document.getElementById('newFocusXVal').innerText = '50%'; document.getElementById('newFocusYVal').innerText = '50%';
+    }
+    (async function () { initMap(); await loadData(); bindEvents(); loadFav(); const switcherDiv = document.createElement('div'); switcherDiv.className = 'basemap-switcher'; switcherDiv.innerHTML = `<label>🗺️ 底图源</label><select id="basemapSelect"><option value="高德地图" selected>高德道路图</option><option value="高德卫星图">高德卫星图</option></select>`; document.body.appendChild(switcherDiv); document.getElementById('basemapSelect').addEventListener('change', (e) => { const selected = e.target.value; if (basemaps[selected]) { map.removeLayer(currentBasemap); currentBasemap = basemaps[selected]; currentBasemap.addTo(map); } }); })();
+</script>
+</body>
+</html>
